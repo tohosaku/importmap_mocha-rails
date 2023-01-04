@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Results of test execution </title>
+<%= javascript_include_tag 'mocha', 'chai' %>
+<%= stylesheet_link_tag 'mocha' %>
+<%= javascript_importmap_tags 'importmap_mocha' %>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>
+    mocha.setup('<%= Rails.application.config.importmap_mocha_style %>');
+  </script>
+</head>
+<body>
+  <%= testcase %>
+  <div id="main">
+    <div id="content">
+      <div id="container">
+      </div>
+      <div id="mocha">
+      </div>
+    </div>
+  </div>
+<script type="module">
+  mocha.run();
+</script>
+</body>
+</html>

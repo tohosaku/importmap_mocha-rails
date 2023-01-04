@@ -1,13 +1,10 @@
 module ImportmapMocha::TestHelper
   def testcase
-    s = files.map do |f|
-      javascript_import_module_tag(f.basename('.js'))
-    end
-    s.join('').html_safe
+    files.map{|m| javascript_import_module_tag(m.to_s.sub('.js', '')) }.join("\n").html_safe
   end
 
   def files
-    root_path.flat_map{|path| path.glob('**/*.js')}
+    root_path.flat_map{|path| path.glob('**/*.js').map{|m| m.relative_path_from(path)}}
   end
 
   def root_path

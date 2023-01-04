@@ -13,6 +13,8 @@ module ImportmapMocha
       if Rails.application.config.respond_to?(:assets)
         Rails.application.config.assets.paths << Engine.root.join('app/assets/javascripts')
         Rails.application.config.assets.paths << Engine.root.join('app/assets/stylesheets')
+        Rails.application.config.assets.paths << Engine.root.join('vendor/javascripts')
+        Rails.application.config.assets.paths << Engine.root.join('vendor/stylesheets')
         Rails.application.config.assets.paths += Rails.application.config.importmap_mocha_path
       end
     end

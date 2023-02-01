@@ -19,6 +19,14 @@ module ImportmapMocha
       end
     end
 
+    PRECOMPILE_ASSETS = %w( importmap_mocha.js chai.js mocha.js mocha.css )
+
+    initializer "turbo.assets" do
+      if Rails.application.config.respond_to?(:assets)
+        Rails.application.config.assets.precompile += PRECOMPILE_ASSETS
+      end
+    end
+
     initializer "importmap_mocha.importmap", before: "importmap" do |app|
       if Rails.application.respond_to?(:importmap)
         app.config.importmap.paths << Engine.root.join("config/importmap.rb")

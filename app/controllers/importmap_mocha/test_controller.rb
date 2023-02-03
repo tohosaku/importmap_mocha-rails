@@ -1,6 +1,9 @@
-class ImportmapMocha::TestController < ActionController::Base
-  layout false
+# frozen_string_literal: true
 
-  def index
+module ImportmapMocha
+  class TestController < ActionController::Base
+    layout false
+
+    def index; end
   end
 end

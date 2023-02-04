@@ -6,9 +6,10 @@ Gem::Specification.new do |spec|
   spec.authors     = ['Takashi Kato']
   spec.email       = ['tohosaku@users.osdn.me']
   spec.homepage    = 'https://github.com/tohosaku/importmap_mocha-rails'
-  spec.summary     = 'Add JavaScript testing tools in importmap environment.'
+  spec.summary     = 'mochajs rails integration'
   spec.description = 'Add JavaScript testing tools in importmap environment.'
   spec.required_ruby_version = '>= 2.7.0'
+  spec.license     = 'MIT'
 
   spec.metadata['homepage_uri'] = spec.homepage
   spec.metadata['source_code_uri'] = spec.homepage
@@ -18,5 +19,5 @@ Gem::Specification.new do |spec|
     Dir['{app,config,db,lib}/**/*', 'MIT-LICENSE', 'Rakefile', 'README.md']
   end
 
-  spec.add_dependency 'rails', '>= 7.0.4.2'
+  spec.add_dependency 'rails', '~> 7.0'
 end

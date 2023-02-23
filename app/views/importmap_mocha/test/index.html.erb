@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8" />
 <title>Results of test execution </title>
+<% if Rails.application.config.importmap_mocha_scripts.size > 0 %>
+  <%= javascript_include_tag *Rails.application.config.importmap_mocha_scripts %>
+<% end %>
 <%= javascript_include_tag 'mocha', 'chai' %>
 <%= stylesheet_link_tag 'mocha' %>
 <%= javascript_importmap_tags 'importmap_mocha' %>

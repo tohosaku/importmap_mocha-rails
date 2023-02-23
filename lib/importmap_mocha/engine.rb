@@ -42,6 +42,9 @@ module ImportmapMocha
       unless Rails.application.config.respond_to?(:importmap_mocha_style)
         Rails.application.config.importmap_mocha_style = 'bdd'
       end
+      unless Rails.application.config.respond_to?(:importmap_mocha_scripts)
+        Rails.application.config.importmap_mocha_scripts = []
+      end
     end
   end
 end

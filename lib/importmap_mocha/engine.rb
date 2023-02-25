@@ -33,6 +33,7 @@ module ImportmapMocha
     initializer 'importmap_mocha.routes' do
       Rails.application.routes.prepend do
         scope module: 'importmap_mocha' do
+          get '/mockServiceWorker.js' => 'test#worker'
           get '/rails/info/mocha' => 'test#index'
         end
       end

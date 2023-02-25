@@ -6,7 +6,7 @@
 <% if Rails.application.config.importmap_mocha_scripts.size > 0 %>
   <%= javascript_include_tag *Rails.application.config.importmap_mocha_scripts %>
 <% end %>
-<%= javascript_include_tag 'mocha', 'chai' %>
+<%= javascript_include_tag 'mocha', 'chai', 'msw-1.1.0' %>
 <%= stylesheet_link_tag 'mocha' %>
 <%= javascript_importmap_tags 'importmap_mocha' %>
 <meta name="viewport" content="width=device-width, initial-scale=1">

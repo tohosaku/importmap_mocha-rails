@@ -1,6 +1,6 @@
 # importmap_mocha-rails
 
-This plugin makes it easy to test ES modules with [importmap-rails](https://github.com/rails/importmap-rails) when using Rails 7 or later. It integrates the [Mocha](https://mochajs.org/) JavaScript testing library (using [Chai](https://www.chaijs.com/) as the assertion library) and runs tests for ES modules delivered with importmap in the browser.
+This plugin makes it easy to test ES modules with [importmap-rails](https://github.com/rails/importmap-rails) when using Rails 7 or later. It integrates the [Mocha](https://mochajs.org/) JavaScript testing library (using [Chai](https://www.chaijs.com/) as the assertion library, [msw](https://mswjs.io/) as the mocking library) and runs tests for ES modules delivered with importmap in the browser.
 
 # Installation
 
@@ -89,6 +89,7 @@ describe('clear_controller', () => {
 
 * config.importmap_mocha_style: The style of the test code, `"bdd"` or `"tdd"`. Default is `"bdd"`.
 * config.importmap_mocha_path: The location where the test code is stored. Default is `test/javascripts` and `spec/javascripts`.
+* config.importmap_mocha_scripts: The scripts to be loaded globally. e.g. `['jquery.js']`.
 
 # Author
 

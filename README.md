@@ -1,6 +1,7 @@
 # importmap_mocha-rails
 
-This plugin makes it easy to test ES modules with [importmap-rails](https://github.com/rails/importmap-rails) when using Rails 7 or later. It integrates the [Mocha](https://mochajs.org/) JavaScript testing library (using [Chai](https://www.chaijs.com/) as the assertion library, [msw](https://mswjs.io/) as the mocking library) and runs tests for ES modules delivered with importmap in the browser.
+This plugin makes it easy to test ES modules with [importmap-rails](https://github.com/rails/importmap-rails) when using Rails 7 or later.
+It integrates the [Mocha](https://mochajs.org/) JavaScript testing library (using [Chai](https://www.chaijs.com/) as the assertion library, [@mswjs/interceptors](https://github.com/mswjs/interceptors) as the mocking library) and runs tests for ES modules delivered with importmap in the browser.
 
 # Installation
 
@@ -35,54 +36,45 @@ export default class extends Controller {
 }
 ```
 
-controllers/clear_controller.test.js
+controllers/clear_controller.spec.js
 
 ```javascript
 import { Application } from "@hotwired/stimulus"
 import ClearController from 'controllers/clear_controller'
 
+const assert = chai.assert;
 const html = `<div data-controller="clear">
   <input id="target" type="text" value="foo" data-clear-target="clear">
   <button data-action="clear#clear">test</button>
   </div>`
 
-const config = { attributes: true, childList: true, subtree: true };
-
-// test!! test!!
-describe('clear_controller', () => {
+describe('clear controller', () => {
 
   let container;
 
-  beforeEach(() => {
+  before(async () => {
     container = document.getElementById('container')
+    const app = Application.start(container);
+    await app.register('clear', ClearController);
+
     container.insertAdjacentHTML('afterbegin', html)
   });
 
-  afterEach(() => {
+  after(() => {
     const clone = container.cloneNode(false);
     container.parentNode.replaceChild(clone, container);
   });
 
-  const watch = (fn) => {
-    const observer = new MutationObserver(fn);
-    observer.observe(container, config);
-  }
-
   describe('click', () => {
-    it('The value of input element is cleard', () => {
-      const app = Application.start();
-      app.register('clear', ClearController);
-
+    it('The value of input element is cleard', async () => {
       const target = container.querySelector('#target');
-
-      watch(() => target.value.to.equal(''));
-
       const button = container.querySelector('button');
-      button.click()
+      await button.click();
+
+      assert.equal('', target.value);
     });
   });
 });
-
 ```
 
 # Configuration

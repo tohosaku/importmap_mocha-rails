@@ -94,7 +94,7 @@ var Interceptor = class {
       logger.info("cannot listen to events, already disposed!");
       return this;
     }
-    logger.info('adding "%s" event listener:', event, listener == null ? void 0 : listener.name);
+    logger.info('adding "%s" event listener:', event, listener);
     this.emitter.on(event, listener);
     return this;
   }
@@ -156,10 +156,10 @@ var Interceptor = class {
 };
 
 // src/BatchInterceptor.ts
-var BatchInterceptor = class _BatchInterceptor extends Interceptor {
+var BatchInterceptor = class extends Interceptor {
   constructor(options) {
-    _BatchInterceptor.symbol = Symbol(options.name);
-    super(_BatchInterceptor.symbol);
+    BatchInterceptor.symbol = Symbol(options.name);
+    super(BatchInterceptor.symbol);
     this.interceptors = options.interceptors;
   }
   setup() {

@@ -91,7 +91,7 @@ var Interceptor = class {
       logger.info("cannot listen to events, already disposed!");
       return this;
     }
-    logger.info('adding "%s" event listener:', event, listener == null ? void 0 : listener.name);
+    logger.info('adding "%s" event listener:', event, listener);
     this.emitter.on(event, listener);
     return this;
   }
@@ -205,8 +205,18 @@ async function emitAsync(emitter, eventName, ...data) {
   }
 }
 
+// src/utils/isPropertyAccessible.ts
+function isPropertyAccessible(obj, key) {
+  try {
+    obj[key];
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 // src/interceptors/fetch/index.ts
-var _FetchInterceptor = class _FetchInterceptor extends Interceptor {
+var _FetchInterceptor = class extends Interceptor {
   constructor() {
     super(_FetchInterceptor.symbol);
   }
@@ -274,7 +284,7 @@ var _FetchInterceptor = class _FetchInterceptor extends Interceptor {
       const mockedResponse = resolverResult.data;
       if (mockedResponse && !((_a = request.signal) == null ? void 0 : _a.aborted)) {
         this.logger.info("received mocked response:", mockedResponse);
-        if (mockedResponse.type === "error") {
+        if (isPropertyAccessible(mockedResponse, "type") && mockedResponse.type === "error") {
           this.logger.info(
             "received a network error response, rejecting the request promise..."
           );
@@ -326,8 +336,8 @@ var _FetchInterceptor = class _FetchInterceptor extends Interceptor {
     });
   }
 };
-_FetchInterceptor.symbol = Symbol("fetch");
 var FetchInterceptor = _FetchInterceptor;
+FetchInterceptor.symbol = Symbol("fetch");
 function createNetworkError(cause) {
   return Object.assign(new TypeError("Failed to fetch"), {
     cause
@@ -473,11 +483,9 @@ function optionsToProxyHandler(options) {
       return constructorCall.call(newTarget, args, next);
     };
   }
-  handler.set = function(target, propertyName, nextValue, receiver) {
+  handler.set = function(target, propertyName, nextValue) {
     const next = () => {
-      const propertySource = findPropertySource(target, propertyName);
-      if (propertySource === null)
-        return false;
+      const propertySource = findPropertySource(target, propertyName) || target;
       const ownDescriptors = Reflect.getOwnPropertyDescriptor(
         propertySource,
         propertyName
@@ -616,7 +624,7 @@ var XMLHttpRequestController = class {
           case "addEventListener": {
             const [eventName, listener] = args;
             this.registerEvent(eventName, listener);
-            this.logger.info("addEventListener", eventName, listener == null ? void 0 : listener.name);
+            this.logger.info("addEventListener", eventName, listener);
             return invoke();
           }
           case "setRequestHeader": {
@@ -679,7 +687,7 @@ var XMLHttpRequestController = class {
     const prevEvents = this.events.get(eventName) || [];
     const nextEvents = prevEvents.concat(listener);
     this.events.set(eventName, nextEvents);
-    this.logger.info('registered event "%s"', eventName, listener == null ? void 0 : listener.name);
+    this.logger.info('registered event "%s"', eventName, listener);
   }
   /**
    * Responds to the current request with the given
@@ -964,6 +972,9 @@ var XMLHttpRequestController = class {
   }
 };
 function toAbsoluteUrl(url) {
+  if (typeof location === "undefined") {
+    return new URL(url);
+  }
   return new URL(url.toString(), location.href);
 }
 function define(target, property, value) {
@@ -1075,7 +1086,7 @@ function createXMLHttpRequestProxy({
 }
 
 // src/interceptors/XMLHttpRequest/index.ts
-var _XMLHttpRequestInterceptor = class _XMLHttpRequestInterceptor extends Interceptor {
+var _XMLHttpRequestInterceptor = class extends Interceptor {
   constructor() {
     super(_XMLHttpRequestInterceptor.interceptorSymbol);
   }
@@ -1115,8 +1126,8 @@ var _XMLHttpRequestInterceptor = class _XMLHttpRequestInterceptor extends Interc
     });
   }
 };
-_XMLHttpRequestInterceptor.interceptorSymbol = Symbol("xhr");
 var XMLHttpRequestInterceptor = _XMLHttpRequestInterceptor;
+XMLHttpRequestInterceptor.interceptorSymbol = Symbol("xhr");
 
 // src/presets/browser.ts
 var browser_default = [

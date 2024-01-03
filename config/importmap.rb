@@ -2,6 +2,7 @@ pin "importmap_mocha"
 
 pin "@mswjs/interceptors", to: "@mswjs--interceptors.js"
 pin "@mswjs/interceptors/presets/browser" , to: "@mswjs--interceptors--presets--browser.js"
+pin "chai", to: "chai.js"
 
 pin "@open-draft/logger", to: "@open-draft--logger.js" # @0.3.0
 pin "is-node-process", to: "is-node-process.js" # @1.2.0

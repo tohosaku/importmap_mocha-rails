@@ -548,13 +548,20 @@ function parseJson(data) {
 }
 
 // src/utils/responseUtils.ts
-var responseStatusCodesWithoutBody = [204, 205, 304];
+var RESPONSE_STATUS_CODES_WITHOUT_BODY = /* @__PURE__ */ new Set([
+  101,
+  103,
+  204,
+  205,
+  304
+]);
+function isResponseWithoutBody(status) {
+  return RESPONSE_STATUS_CODES_WITHOUT_BODY.has(status);
+}
 
 // src/interceptors/XMLHttpRequest/utils/createResponse.ts
 function createResponse(request, body) {
-  const responseBodyOrNull = responseStatusCodesWithoutBody.includes(
-    request.status
-  ) ? null : body;
+  const responseBodyOrNull = isResponseWithoutBody(request.status) ? null : body;
   return new Response(responseBodyOrNull, {
     status: request.status,
     statusText: request.statusText,

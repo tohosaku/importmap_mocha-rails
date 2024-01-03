@@ -39,10 +39,10 @@ export default class extends Controller {
 controllers/clear_controller.spec.js
 
 ```javascript
+import { assert } from "chai"
 import { Application } from "@hotwired/stimulus"
 import ClearController from 'controllers/clear_controller'
 
-const assert = chai.assert;
 const html = `<div data-controller="clear">
   <input id="target" type="text" value="foo" data-clear-target="clear">
   <button data-action="clear#clear">test</button>

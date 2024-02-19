@@ -30,6 +30,15 @@ module ImportmapMocha
       app.config.importmap.paths << Engine.root.join('config/importmap.rb') if Rails.application.respond_to?(:importmap)
     end
 
+    initializer "importmap_mocha.cache_sweeper", before: "importmap.cache_sweeper" do |app|
+      if app.config.importmap.sweep_cache && !app.config.cache_classes
+        app.config.importmap.cache_sweepers << Engine.root.join('app/assets/javascripts')
+        app.config.importmap.cache_sweepers << Engine.root.join('vendor/javascripts')
+        app.config.importmap.cache_sweepers  += Rails.application.config.importmap_mocha_path
+      end
+    end
+
+
     initializer 'importmap_mocha.routes' do
       Rails.application.routes.prepend do
         scope module: 'importmap_mocha' do

@@ -77,6 +77,8 @@ describe('clear controller', () => {
 });
 ```
 
+![screenshot](./images/screenshot01.png)
+
 # Configuration
 
 * config.importmap_mocha_style: The style of the test code, `"bdd"` or `"tdd"`. Default is `"bdd"`.

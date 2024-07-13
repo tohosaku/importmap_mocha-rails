@@ -1,7 +1,6 @@
 // src/interceptors/fetch/index.ts
 import { invariant as invariant2 } from "outvariant";
-import { DeferredPromise as DeferredPromise2 } from "@open-draft/deferred-promise";
-import { until } from "@open-draft/until";
+import { DeferredPromise as DeferredPromise3 } from "@open-draft/deferred-promise";
 
 // src/glossary.ts
 var IS_PATCHED_MODULE = Symbol("isPatchedModule");
@@ -9,6 +8,7 @@ var IS_PATCHED_MODULE = Symbol("isPatchedModule");
 // src/Interceptor.ts
 import { Logger } from "@open-draft/logger";
 import { Emitter } from "strict-event-emitter";
+var INTERNAL_REQUEST_ID_HEADER_NAME = "x-interceptors-internal-request-id";
 function getGlobalSymbol(symbol) {
   return (
     // @ts-ignore https://github.com/Microsoft/TypeScript/issues/24587
@@ -152,47 +152,65 @@ var Interceptor = class {
   }
 };
 
-// src/utils/uuid.ts
-function uuidv4() {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c == "x" ? r : r & 3 | 8;
-    return v.toString(16);
-  });
-}
-
-// src/utils/RequestController.ts
+// src/RequestController.ts
 import { invariant } from "outvariant";
 import { DeferredPromise } from "@open-draft/deferred-promise";
-var RequestController = class {
-  constructor(request) {
-    this.request = request;
-    this.responsePromise = new DeferredPromise();
-  }
-  respondWith(response) {
-    invariant(
-      this.responsePromise.state === "pending",
-      'Failed to respond to "%s %s" request: the "request" event has already been responded to.',
-      this.request.method,
-      this.request.url
-    );
-    this.responsePromise.resolve(response);
+
+// src/InterceptorError.ts
+var InterceptorError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "InterceptorError";
+    Object.setPrototypeOf(this, InterceptorError.prototype);
   }
 };
 
-// src/utils/toInteractiveRequest.ts
-function toInteractiveRequest(request) {
-  const requestController = new RequestController(request);
-  Reflect.set(
-    request,
-    "respondWith",
-    requestController.respondWith.bind(requestController)
-  );
-  return {
-    interactiveRequest: request,
-    requestController
-  };
-}
+// src/RequestController.ts
+var kRequestHandled = Symbol("kRequestHandled");
+var kResponsePromise = Symbol("kResponsePromise");
+var RequestController = class {
+  constructor(request) {
+    this.request = request;
+    this[kRequestHandled] = false;
+    this[kResponsePromise] = new DeferredPromise();
+  }
+  /**
+   * Respond to this request with the given `Response` instance.
+   * @example
+   * controller.respondWith(new Response())
+   * controller.respondWith(Response.json({ id }))
+   * controller.respondWith(Response.error())
+   */
+  respondWith(response) {
+    invariant.as(
+      InterceptorError,
+      !this[kRequestHandled],
+      'Failed to respond to the "%s %s" request: the "request" event has already been handled.',
+      this.request.method,
+      this.request.url
+    );
+    this[kRequestHandled] = true;
+    this[kResponsePromise].resolve(response);
+  }
+  /**
+   * Error this request with the given error.
+   * @example
+   * controller.errorWith()
+   * controller.errorWith(new Error('Oops!'))
+   */
+  errorWith(error) {
+    invariant.as(
+      InterceptorError,
+      !this[kRequestHandled],
+      'Failed to error the "%s %s" request: the "request" event has already been handled.',
+      this.request.method,
+      this.request.url
+    );
+    this[kRequestHandled] = true;
+    this[kResponsePromise].resolve(error);
+  }
+};
+kResponsePromise, kRequestHandled;
 
 // src/utils/emitAsync.ts
 async function emitAsync(emitter, eventName, ...data) {
@@ -205,6 +223,10 @@ async function emitAsync(emitter, eventName, ...data) {
   }
 }
 
+// src/utils/handleRequest.ts
+import { DeferredPromise as DeferredPromise2 } from "@open-draft/deferred-promise";
+import { until } from "@open-draft/until";
+
 // src/utils/isPropertyAccessible.ts
 function isPropertyAccessible(obj, key) {
   try {
@@ -215,6 +237,164 @@ function isPropertyAccessible(obj, key) {
   }
 }
 
+// src/utils/responseUtils.ts
+var RESPONSE_STATUS_CODES_WITHOUT_BODY = /* @__PURE__ */ new Set([
+  101,
+  103,
+  204,
+  205,
+  304
+]);
+function isResponseWithoutBody(status) {
+  return RESPONSE_STATUS_CODES_WITHOUT_BODY.has(status);
+}
+function createServerErrorResponse(body) {
+  return new Response(
+    JSON.stringify(
+      body instanceof Error ? {
+        name: body.name,
+        message: body.message,
+        stack: body.stack
+      } : body
+    ),
+    {
+      status: 500,
+      statusText: "Unhandled Exception",
+      headers: {
+        "Content-Type": "application/json"
+      }
+    }
+  );
+}
+function isResponseError(response) {
+  return isPropertyAccessible(response, "type") && response.type === "error";
+}
+
+// src/utils/isNodeLikeError.ts
+function isNodeLikeError(error) {
+  if (error == null) {
+    return false;
+  }
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return "code" in error && "errno" in error;
+}
+
+// src/utils/handleRequest.ts
+async function handleRequest(options) {
+  const handleResponse = (response) => {
+    if (response instanceof Error) {
+      options.onError(response);
+    } else if (isResponseError(response)) {
+      options.onRequestError(response);
+    } else {
+      options.onResponse(response);
+    }
+    return true;
+  };
+  const handleResponseError = (error) => {
+    if (error instanceof InterceptorError) {
+      throw result.error;
+    }
+    if (isNodeLikeError(error)) {
+      options.onError(error);
+      return true;
+    }
+    if (error instanceof Response) {
+      return handleResponse(error);
+    }
+    return false;
+  };
+  options.emitter.once("request", ({ requestId: pendingRequestId }) => {
+    if (pendingRequestId !== options.requestId) {
+      return;
+    }
+    if (options.controller[kResponsePromise].state === "pending") {
+      options.controller[kResponsePromise].resolve(void 0);
+    }
+  });
+  const requestAbortPromise = new DeferredPromise2();
+  if (options.request.signal) {
+    options.request.signal.addEventListener(
+      "abort",
+      () => {
+        requestAbortPromise.reject(options.request.signal.reason);
+      },
+      { once: true }
+    );
+  }
+  const result = await until(async () => {
+    const requestListtenersPromise = emitAsync(options.emitter, "request", {
+      requestId: options.requestId,
+      request: options.request,
+      controller: options.controller
+    });
+    await Promise.race([
+      // Short-circuit the request handling promise if the request gets aborted.
+      requestAbortPromise,
+      requestListtenersPromise,
+      options.controller[kResponsePromise]
+    ]);
+    const mockedResponse = await options.controller[kResponsePromise];
+    return mockedResponse;
+  });
+  if (requestAbortPromise.state === "rejected") {
+    options.onError(requestAbortPromise.rejectionReason);
+    return true;
+  }
+  if (result.error) {
+    if (handleResponseError(result.error)) {
+      return true;
+    }
+    if (options.emitter.listenerCount("unhandledException") > 0) {
+      const unhandledExceptionController = new RequestController(
+        options.request
+      );
+      await emitAsync(options.emitter, "unhandledException", {
+        error: result.error,
+        request: options.request,
+        requestId: options.requestId,
+        controller: unhandledExceptionController
+      }).then(() => {
+        if (unhandledExceptionController[kResponsePromise].state === "pending") {
+          unhandledExceptionController[kResponsePromise].resolve(void 0);
+        }
+      });
+      const nextResult = await until(
+        () => unhandledExceptionController[kResponsePromise]
+      );
+      if (nextResult.error) {
+        return handleResponseError(nextResult.error);
+      }
+      if (nextResult.data) {
+        return handleResponse(nextResult.data);
+      }
+    }
+    options.onResponse(createServerErrorResponse(result.error));
+    return true;
+  }
+  if (result.data) {
+    return handleResponse(result.data);
+  }
+  return false;
+}
+
+// src/utils/canParseUrl.ts
+function canParseUrl(url) {
+  try {
+    new URL(url);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+// src/createRequestId.ts
+function createRequestId() {
+  return Math.random().toString(16).slice(2);
+}
+
 // src/interceptors/fetch/index.ts
 var _FetchInterceptor = class extends Interceptor {
   constructor() {
@@ -223,99 +403,81 @@ var _FetchInterceptor = class extends Interceptor {
   checkEnvironment() {
     return typeof globalThis !== "undefined" && typeof globalThis.fetch !== "undefined";
   }
-  setup() {
+  async setup() {
     const pureFetch = globalThis.fetch;
     invariant2(
       !pureFetch[IS_PATCHED_MODULE],
       'Failed to patch the "fetch" module: already patched.'
     );
     globalThis.fetch = async (input, init) => {
-      var _a;
-      const requestId = uuidv4();
-      const request = new Request(input, init);
+      const requestId = createRequestId();
+      const resolvedInput = typeof input === "string" && typeof location !== "undefined" && !canParseUrl(input) ? new URL(input, location.origin) : input;
+      const request = new Request(resolvedInput, init);
+      const responsePromise = new DeferredPromise3();
+      const controller = new RequestController(request);
       this.logger.info("[%s] %s", request.method, request.url);
-      const { interactiveRequest, requestController } = toInteractiveRequest(request);
+      this.logger.info("awaiting for the mocked response...");
       this.logger.info(
-        'emitting the "request" event for %d listener(s)...',
+        'emitting the "request" event for %s listener(s)...',
         this.emitter.listenerCount("request")
       );
-      this.emitter.once("request", ({ requestId: pendingRequestId }) => {
-        if (pendingRequestId !== requestId) {
-          return;
-        }
-        if (requestController.responsePromise.state === "pending") {
-          requestController.responsePromise.resolve(void 0);
-        }
-      });
-      this.logger.info("awaiting for the mocked response...");
-      const signal = interactiveRequest.signal;
-      const requestAborted = new DeferredPromise2();
-      signal.addEventListener(
-        "abort",
-        () => {
-          requestAborted.reject(signal.reason);
+      const isRequestHandled = await handleRequest({
+        request,
+        requestId,
+        emitter: this.emitter,
+        controller,
+        onResponse: async (response) => {
+          this.logger.info("received mocked response!", {
+            response
+          });
+          if (this.emitter.listenerCount("response") > 0) {
+            this.logger.info('emitting the "response" event...');
+            await emitAsync(this.emitter, "response", {
+              // Clone the mocked response for the "response" event listener.
+              // This way, the listener can read the response and not lock its body
+              // for the actual fetch consumer.
+              response: response.clone(),
+              isMockedResponse: true,
+              request,
+              requestId
+            });
+          }
+          Object.defineProperty(response, "url", {
+            writable: false,
+            enumerable: true,
+            configurable: false,
+            value: request.url
+          });
+          responsePromise.resolve(response);
         },
-        { once: true }
-      );
-      const resolverResult = await until(async () => {
-        const listenersFinished = emitAsync(this.emitter, "request", {
-          request: interactiveRequest,
-          requestId
-        });
-        await Promise.race([
-          requestAborted,
-          // Put the listeners invocation Promise in the same race condition
-          // with the request abort Promise because otherwise awaiting the listeners
-          // would always yield some response (or undefined).
-          listenersFinished,
-          requestController.responsePromise
-        ]);
-        this.logger.info("all request listeners have been resolved!");
-        const mockedResponse2 = await requestController.responsePromise;
-        this.logger.info("event.respondWith called with:", mockedResponse2);
-        return mockedResponse2;
-      });
-      if (requestAborted.state === "rejected") {
-        return Promise.reject(requestAborted.rejectionReason);
-      }
-      if (resolverResult.error) {
-        return Promise.reject(createNetworkError(resolverResult.error));
-      }
-      const mockedResponse = resolverResult.data;
-      if (mockedResponse && !((_a = request.signal) == null ? void 0 : _a.aborted)) {
-        this.logger.info("received mocked response:", mockedResponse);
-        if (isPropertyAccessible(mockedResponse, "type") && mockedResponse.type === "error") {
-          this.logger.info(
-            "received a network error response, rejecting the request promise..."
-          );
-          return Promise.reject(createNetworkError(mockedResponse));
+        onRequestError: (response) => {
+          this.logger.info("request has errored!", { response });
+          responsePromise.reject(createNetworkError(response));
+        },
+        onError: (error) => {
+          this.logger.info("request has been aborted!", { error });
+          responsePromise.reject(error);
         }
-        const responseClone = mockedResponse.clone();
-        this.emitter.emit("response", {
-          response: responseClone,
-          isMockedResponse: true,
-          request: interactiveRequest,
-          requestId
-        });
-        const response = new Response(mockedResponse.body, mockedResponse);
-        Object.defineProperty(response, "url", {
-          writable: false,
-          enumerable: true,
-          configurable: false,
-          value: request.url
-        });
-        return response;
+      });
+      if (isRequestHandled) {
+        this.logger.info("request has been handled, returning mock promise...");
+        return responsePromise;
       }
-      this.logger.info("no mocked response received!");
+      this.logger.info(
+        "no mocked response received, performing request as-is..."
+      );
       return pureFetch(request).then((response) => {
-        const responseClone = response.clone();
-        this.logger.info("original fetch performed", responseClone);
-        this.emitter.emit("response", {
-          response: responseClone,
-          isMockedResponse: false,
-          request: interactiveRequest,
-          requestId
-        });
+        this.logger.info("original fetch performed", response);
+        if (this.emitter.listenerCount("response") > 0) {
+          this.logger.info('emitting the "response" event...');
+          const responseClone = response.clone();
+          this.emitter.emit("response", {
+            response: responseClone,
+            isMockedResponse: false,
+            request,
+            requestId
+          });
+        }
         return response;
       });
     };
@@ -346,9 +508,6 @@ function createNetworkError(cause) {
 
 // src/interceptors/XMLHttpRequest/index.ts
 import { invariant as invariant4 } from "outvariant";
-
-// src/interceptors/XMLHttpRequest/XMLHttpRequestProxy.ts
-import { until as until2 } from "@open-draft/until";
 
 // src/interceptors/XMLHttpRequest/XMLHttpRequestController.ts
 import { invariant as invariant3 } from "outvariant";
@@ -547,18 +706,6 @@ function parseJson(data) {
   }
 }
 
-// src/utils/responseUtils.ts
-var RESPONSE_STATUS_CODES_WITHOUT_BODY = /* @__PURE__ */ new Set([
-  101,
-  103,
-  204,
-  205,
-  304
-]);
-function isResponseWithoutBody(status) {
-  return RESPONSE_STATUS_CODES_WITHOUT_BODY.has(status);
-}
-
 // src/interceptors/XMLHttpRequest/utils/createResponse.ts
 function createResponse(request, body) {
   const responseBodyOrNull = isResponseWithoutBody(request.status) ? null : body;
@@ -594,7 +741,7 @@ var XMLHttpRequestController = class {
     this.method = "GET";
     this.url = null;
     this.events = /* @__PURE__ */ new Map();
-    this.requestId = uuidv4();
+    this.requestId = createRequestId();
     this.requestHeaders = new Headers();
     this.responseBuffer = new Uint8Array();
     this.request = createProxy(initialRequest, {
@@ -676,7 +823,10 @@ var XMLHttpRequestController = class {
                   this.request.readyState
                 );
                 if (IS_NODE) {
-                  this.request.setRequestHeader("X-Request-Id", this.requestId);
+                  this.request.setRequestHeader(
+                    INTERNAL_REQUEST_ID_HEADER_NAME,
+                    this.requestId
+                  );
                 }
                 return invoke();
               }
@@ -1001,7 +1151,11 @@ function createXMLHttpRequestProxy({
   const XMLHttpRequestProxy = new Proxy(globalThis.XMLHttpRequest, {
     construct(target, args, newTarget) {
       logger.info("constructed new XMLHttpRequest");
-      const originalRequest = Reflect.construct(target, args, newTarget);
+      const originalRequest = Reflect.construct(
+        target,
+        args,
+        newTarget
+      );
       const prototypeDescriptors = Object.getOwnPropertyDescriptors(
         target.prototype
       );
@@ -1017,57 +1171,35 @@ function createXMLHttpRequestProxy({
         logger
       );
       xhrRequestController.onRequest = async function({ request, requestId }) {
-        const { interactiveRequest, requestController } = toInteractiveRequest(request);
+        const controller = new RequestController(request);
         this.logger.info("awaiting mocked response...");
-        emitter.once("request", ({ requestId: pendingRequestId }) => {
-          if (pendingRequestId !== requestId) {
-            return;
-          }
-          if (requestController.responsePromise.state === "pending") {
-            requestController.respondWith(void 0);
-          }
-        });
-        const resolverResult = await until2(async () => {
-          this.logger.info(
-            'emitting the "request" event for %s listener(s)...',
-            emitter.listenerCount("request")
-          );
-          await emitAsync(emitter, "request", {
-            request: interactiveRequest,
-            requestId
-          });
-          this.logger.info('all "request" listeners settled!');
-          const mockedResponse2 = await requestController.responsePromise;
-          this.logger.info("event.respondWith called with:", mockedResponse2);
-          return mockedResponse2;
-        });
-        if (resolverResult.error) {
-          this.logger.info(
-            "request listener threw an exception, aborting request...",
-            resolverResult.error
-          );
-          xhrRequestController.errorWith(resolverResult.error);
-          return;
-        }
-        const mockedResponse = resolverResult.data;
-        if (typeof mockedResponse !== "undefined") {
-          this.logger.info(
-            "received mocked response: %d %s",
-            mockedResponse.status,
-            mockedResponse.statusText
-          );
-          if (mockedResponse.type === "error") {
-            this.logger.info(
-              "received a network error response, rejecting the request promise..."
-            );
-            xhrRequestController.errorWith(new TypeError("Network error"));
-            return;
-          }
-          return xhrRequestController.respondWith(mockedResponse);
-        }
         this.logger.info(
-          "no mocked response received, performing request as-is..."
+          'emitting the "request" event for %s listener(s)...',
+          emitter.listenerCount("request")
         );
+        const isRequestHandled = await handleRequest({
+          request,
+          requestId,
+          controller,
+          emitter,
+          onResponse: (response) => {
+            this.respondWith(response);
+          },
+          onRequestError: () => {
+            this.errorWith(new TypeError("Network error"));
+          },
+          onError: (error) => {
+            this.logger.info("request errored!", { error });
+            if (error instanceof Error) {
+              this.errorWith(error);
+            }
+          }
+        });
+        if (!isRequestHandled) {
+          this.logger.info(
+            "no mocked response received, performing request as-is..."
+          );
+        }
       };
       xhrRequestController.onResponse = async function({
         response,

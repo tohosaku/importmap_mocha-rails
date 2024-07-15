@@ -4,6 +4,7 @@ var IS_PATCHED_MODULE = Symbol("isPatchedModule");
 // src/Interceptor.ts
 import { Logger } from "@open-draft/logger";
 import { Emitter } from "strict-event-emitter";
+var INTERNAL_REQUEST_ID_HEADER_NAME = "x-interceptors-internal-request-id";
 function getGlobalSymbol(symbol) {
   return (
     // @ts-ignore https://github.com/Microsoft/TypeScript/issues/24587
@@ -198,6 +199,11 @@ var BatchInterceptor = class extends Interceptor {
   }
 };
 
+// src/createRequestId.ts
+function createRequestId() {
+  return Math.random().toString(16).slice(2);
+}
+
 // src/utils/getCleanUrl.ts
 function getCleanUrl(url, isAbsolute = true) {
   return [isAbsolute && url.origin, url.pathname].filter(Boolean).join("");
@@ -226,9 +232,11 @@ function isResponseWithoutBody(status) {
 }
 export {
   BatchInterceptor,
+  INTERNAL_REQUEST_ID_HEADER_NAME,
   IS_PATCHED_MODULE,
   Interceptor,
   InterceptorReadyState,
+  createRequestId,
   decodeBuffer,
   deleteGlobalSymbol,
   encodeBuffer,
